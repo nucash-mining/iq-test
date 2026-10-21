@@ -70,7 +70,7 @@ function explain(spec){
     else if(R.t==='col')out.push(`${N} depends on the column and repeats in every row.`);
     else if(R.t==='dist')out.push(`Each row uses the same three ${NAMES[a][1]}, once each.`);
     else if(R.t==='prog'){
-      if(a==='rot')out.push(Array.isArray(R.k)?'Each row turns by its own step: 90°, then 180°, then 270° clockwise per cell.':'The figure turns 90° clockwise from cell to cell.');
+      if(a==='rot')out.push(Array.isArray(R.k)?`Each row turns by its own step per cell: ${R.k.map(k=>k*90+'°').join(', then ')} clockwise.`:'The figure turns 90° clockwise from cell to cell.');
       else out.push(`${N} goes up by ${R.k} from left to right.`);
     }
     else if(R.t==='xor')out.push('A line appears in the third cell when it is in exactly one of the first two; lines in both cancel.');
@@ -141,18 +141,106 @@ const EX=[
  {b:5.7,q:'A family has two children. At least one is a boy born on a Tuesday. What is the probability both children are boys? Type it as a fraction.',free:'text',ans:'13/27',ex:'Of the 196 equally likely (sex, weekday) pairs, 27 include a Tuesday boy. 13 of those are two boys (7 + 7 − 1).'},
  {b:6.3,q:'What is the sum of all the digits of all the whole numbers from 1 to 1,000,000?',free:'num',ans:'27000001',ex:'From 0 to 999,999 every digit 0–9 appears equally often in each of 6 places: 10⁶ × 6 × 4.5 = 27,000,000. Add 1 for 1,000,000.'},
 ];
-const ITEMS=[];
+let ITEMS=[], SECS=[], LIMIT=0, STORE='', MODE='A';
+const RCEIL=191;
 const addMx=(s,i,sec)=>{const o=buildOptions(s,i*7919+13);ITEMS.push({sec,kind:'mx',b:s.b,c:1/8,spec:s,opts:o.opts,a:o.correct,ex:explain(s)})};
-MX.forEach((s,i)=>addMx(s,i,0));
-NS.forEach(s=>ITEMS.push({sec:1,kind:'ns',b:s.b,c:0,...s}));
-VB.forEach(s=>ITEMS.push({sec:2,kind:s.free?'free':'vb',c:s.free?0:1/s.o.length,...s}));
-EX.forEach((s,i)=>{
-  if(s.mx)addMx({b:s.b,...s.mx},100+i,3);
-  else if(s.ns)ITEMS.push({sec:3,kind:'ns',c:0,...s});
-  else ITEMS.push({sec:3,kind:s.free?'free':'vb',c:s.free?0:1/s.o.length,...s});
-});
-const SECS=['Matrix Reasoning','Number Series','Verbal & Logical Reasoning','Extended Range'];
-const LIMIT=70*60*1000, STORE='hrit-form-b-v1';
+function buildFormA(){
+  ITEMS=[];
+  MX.forEach((s,i)=>addMx(s,i,0));
+  NS.forEach(s=>ITEMS.push({sec:1,kind:'ns',b:s.b,c:0,...s}));
+  VB.forEach(s=>ITEMS.push({sec:2,kind:s.free?'free':'vb',c:s.free?0:1/s.o.length,...s}));
+  EX.forEach((s,i)=>{
+    if(s.mx)addMx({b:s.b,...s.mx},100+i,3);
+    else if(s.ns)ITEMS.push({sec:3,kind:'ns',c:0,...s});
+    else ITEMS.push({sec:3,kind:s.free?'free':'vb',c:s.free?0:1/s.o.length,...s});
+  });
+}
+
+/* ---------- Random Form: new puzzles generated from a seed ---------- */
+const ri=(R,a,b)=>a+Math.floor(R()*(b-a+1));
+const pick=(R,a)=>a[Math.floor(R()*a.length)];
+/* Matrix difficulty levels: b, number of changing attributes, hardest rule tier allowed */
+const MLEVELS=[{b:-2.5,n:1,h:0},{b:-1.6,n:2,h:0},{b:-0.7,n:2,h:1},{b:0.2,n:3,h:1},{b:1.1,n:3,h:2},{b:2.0,n:4,h:2},{b:3.0,n:5,h:3},{b:4.2,n:5,h:3}];
+function maskRows(R,ok){const rows=[];while(rows.length<3){const a=ri(R,1,15),b=ri(R,1,15);if(ok(a,b))rows.push([a,b])}return rows}
+function genRule(attr,h,R){
+  const d3=dom=>shuffle(dom.slice(),R).slice(0,3), o=[];
+  const SH=[0,1,2,3,4,5];
+  if(attr==='shape'){o.push([0,()=>({t:'row',v:d3(SH)})]);o.push([1,()=>({t:'dist',v:d3(SH),d:pick(R,[1,-1])})])}
+  if(attr==='count'){
+    o.push([0,()=>({t:'prog',s:[ri(R,1,2),ri(R,1,2),ri(R,1,2)],k:1})]);
+    o.push([1,()=>({t:'dist',v:shuffle(pick(R,[[1,2,3],[2,3,4]]).slice(),R),d:pick(R,[1,-1])})]);
+    o.push([2,()=>({t:'add',v:shuffle([[1,1],[1,2],[2,1],[1,3],[3,1],[2,2]],R).slice(0,3)})]);
+    o.push([2,()=>({t:'minus',v:shuffle([[2,1],[3,1],[3,2],[4,1],[4,2],[4,3]],R).slice(0,3)})]);
+  }
+  if(attr==='fill'||attr==='size'){
+    o.push([0,()=>({t:pick(R,['row','col']),v:shuffle([0,1,2],R)})]);
+    o.push([1,()=>({t:'dist',v:shuffle([0,1,2],R),d:pick(R,[1,-1])})]);
+  }
+  if(attr==='rot'){
+    o.push([0,()=>({t:'prog',s:[ri(R,0,3),ri(R,0,3),ri(R,0,3)],k:1,mod:4})]);
+    o.push([3,()=>({t:'prog',s:[ri(R,0,3),ri(R,0,3),ri(R,0,3)],k:shuffle([1,2,3],R),mod:4})]);
+  }
+  if(attr==='lines'){
+    o.push([1,()=>({t:'or',v:maskRows(R,(a,b)=>(a|b)!==a&&(a|b)!==b)})]);
+    o.push([2,()=>({t:'xor',v:maskRows(R,(a,b)=>a!==b)})]);
+    o.push([2,()=>({t:'sub',v:maskRows(R,(a,b)=>(a&~b)!==a&&(a&~b)!==0)})]);
+  }
+  const avail=o.filter(x=>x[0]<=h), top=Math.max(...avail.map(x=>x[0]));
+  const tops=avail.filter(x=>x[0]===top);
+  return (R()<0.7?pick(R,tops):pick(R,avail))[1]();
+}
+function genMatrix(li,R){
+  const L=MLEVELS[li];
+  for(let tries=0;tries<60;tries++){
+    let pool=shuffle(['shape','count','fill','size','lines','rot'].filter(a=>L.h>=1||a!=='lines'),R);
+    const chosen=[];
+    for(const a of pool){if(chosen.length===L.n)break;if((a==='rot'&&chosen.includes('shape'))||(a==='shape'&&chosen.includes('rot')))continue;chosen.push(a)}
+    if(chosen.length<L.n)continue;
+    const rules={};chosen.forEach(a=>rules[a]=genRule(a,L.h,R));
+    if(!rules.shape)rules.shape={t:'const',v:rules.rot?2:pick(R,[0,1,3,4,5])};
+    if(!rules.count)rules.count={t:'const',v:rules.lines?1:ri(R,1,2)};
+    if(!rules.fill)rules.fill={t:'const',v:ri(R,0,2)};
+    if(!rules.size)rules.size={t:'const',v:rules.lines?pick(R,[0,1]):pick(R,[1,2])};
+    if(!rules.rot)rules.rot={t:'const',v:0};
+    if(!rules.lines)rules.lines={t:'const',v:0};
+    const spec={b:L.b,rules},o=buildOptions(spec,ri(R,1,1e9));
+    if(o.correct>=0&&new Set(o.opts.map(key)).size===8)return {spec,o};
+  }
+  throw new Error('matrix generation failed');
+}
+const sq=n=>String(n).split('').reduce((t,d)=>t+d*d,0);
+/* Number-series templates, easiest to hardest. Each returns the terms with the answer last. */
+const SGEN=[
+ [-2.2,R=>{const a=ri(R,2,5),r=ri(R,2,3),s=[];for(let i=0;i<5;i++)s.push(a*r**i);return{s,ex:`Each term is ×${r}.`}}],
+ [-1.3,R=>{const p=ri(R,3,7),m=ri(R,1,p-1),s=[ri(R,5,20)];for(let i=1;i<8;i++)s.push(s[i-1]+(i%2?p:-m));return{s,ex:`Alternating +${p} and −${m}.`}}],
+ [-0.4,R=>{const d=ri(R,2,5),dd=ri(R,2,4),s=[ri(R,1,9)];for(let i=1;i<7;i++)s.push(s[i-1]+d+(i-1)*dd);return{s,ex:`The gaps start at ${d} and grow by ${dd} each time.`}}],
+ [0.5,R=>{const a=ri(R,1,9),p=ri(R,2,6),b=ri(R,25,45),q=ri(R,2,5),s=[];for(let i=0;i<9;i++)s.push(i%2?b-((i-1)/2)*q:a+(i/2)*p);return{s,ex:`Two sequences take turns: one goes up by ${p}, the other down by ${q}.`}}],
+ [1.0,R=>{const m=ri(R,2,3),c=pick(R,[-1,1,2,3]),s=[ri(R,2,4)];for(let i=1;i<6;i++)s.push(s[i-1]*m+c);return{s,ex:`Each term is ×${m} then ${c>0?'+':'−'}${Math.abs(c)}.`}}],
+ [1.6,R=>{const o=ri(R,1,3),s=[ri(R,1,9)];for(let i=1;i<7;i++)s.push(s[i-1]+(i-1+o)**2);return{s,ex:`The gaps are consecutive squares: ${o*o}, ${(o+1)**2}, ${(o+2)**2}, …`}}],
+ [2.2,R=>{const o=ri(R,0,1),s=[ri(R,1,4)];for(let i=1;i<8;i++){const n=i+o;s.push(i%2?s[i-1]+n:s[i-1]*n)}return{s,ex:`Alternating + and × with a growing number: +${1+o}, ×${2+o}, +${3+o}, …`}}],
+ [2.8,R=>{const k=ri(R,1,3),t=ri(R,0,2),f=[n=>n*n*(n+k),n=>n**3+k*n,n=>n*(n+1)*(n+k)][t],s=[];for(let n=1;n<=6;n++)s.push(f(n));return{s,ex:['n² × (n+'+k+')','n³ + '+k+'n','n × (n+1) × (n+'+k+')'][t]+' for n = 1, 2, 3, …'}}],
+ [3.3,R=>{const s=[ri(R,0,2),ri(R,1,3),ri(R,1,4)];for(let i=3;i<8;i++)s.push(s[i-1]+s[i-2]+s[i-3]);return{s,ex:'Each term is the sum of the three before it.'}}],
+ [3.6,R=>{const k=ri(R,1,3),s=[ri(R,1,3)];for(let n=2;n<=7;n++)s.push(n*s[n-2]+k);return{s,ex:`Term n = n × previous + ${k}.`}}],
+ [3.9,R=>{const r=ri(R,3,5),q=ri(R,2,r-1),s=[];for(let n=0;n<=6;n++)s.push(r**n-q**n);return{s,ex:`${r}ⁿ − ${q}ⁿ for n = 0, 1, 2, …`}}],
+ [4.4,R=>{const s=[ri(R,20,99)];for(let i=1;i<9;i++)s.push(sq(s[i-1]));if(s.includes(1))return null;return{s,ex:'Each term is the sum of the squares of the previous term’s digits.'}}],
+];
+function buildRandom(seed){
+  const R=rng(seed);ITEMS=[];
+  MLEVELS.forEach((L,li)=>{for(let j=0;j<2;j++){const g=genMatrix(li,R);ITEMS.push({sec:0,kind:'mx',b:L.b,c:1/8,spec:g.spec,opts:g.o.opts,a:g.o.correct,ex:explain(g.spec)})}});
+  SGEN.forEach(([b,f])=>{let g=null;for(let t=0;t<80&&!g;t++)g=f(R);
+    ITEMS.push({sec:1,kind:'ns',b,c:0,seq:g.s.slice(0,-1).join(', '),ans:String(g.s[g.s.length-1]),ex:g.ex})});
+}
+const codeOf=seed=>seed.toString(36).toUpperCase();
+const seedOf=code=>{const n=parseInt(String(code).trim(),36);return Number.isFinite(n)&&n>0&&n<2**31?n:null};
+function formName(){return MODE==='A'?'Form A':'Random form '+codeOf(S.seed||0)}
+function activate(mode){
+  MODE=mode;try{localStorage.setItem('hrit-active',mode)}catch(e){}
+  STORE=mode==='A'?'hrit-form-b-v1':'hrit-random-v1';
+  S=load()||{phase:'cover',idx:0,answers:{},elapsed:0};
+  if(mode==='A'){buildFormA();SECS=['Matrix Reasoning','Number Series','Verbal & Logical Reasoning','Extended Range'];LIMIT=70*60*1000}
+  else{SECS=['Matrix Reasoning','Number Series'];LIMIT=45*60*1000;ITEMS=[];if(S.seed)buildRandom(S.seed)}
+  confirmReset=false;confirmSubmit=false;
+}
 
 /* ---------- scoring: 3-parameter IRT, expected a-posteriori ability ---------- */
 const A_DISC=1.1, PRIOR_SD=3;
@@ -177,10 +265,15 @@ function phi(z){const t=1/(1+.2316419*Math.abs(z)),d=.3989423*Math.exp(-z*z/2);c
 function band(iq){return iq>=190?'Beyond the range of standard tests':iq>=175?'Exceptionally gifted':iq>=160?'Highly gifted':iq>=145?'Profoundly gifted range':iq>=130?'Very superior':iq>=120?'Superior':iq>=110?'High average':iq>=90?'Average':iq>=80?'Low average':iq>=70?'Borderline':'Extremely low'}
 
 /* ---------- state ---------- */
-let S=load()||{phase:'cover',idx:0,answers:{},elapsed:0};
+let S, lastTick=Date.now(), confirmReset=false, confirmSubmit=false, prefillCode='';
 function load(){try{return JSON.parse(localStorage.getItem(STORE))}catch(e){return null}}
 function save(){try{localStorage.setItem(STORE,JSON.stringify(S))}catch(e){}}
-let lastTick=Date.now(), confirmReset=false, confirmSubmit=false;
+(function boot(){
+  const h=(location.hash||'').slice(1);
+  if(/^[A-Za-z0-9]{3,7}$/.test(h)&&seedOf(h)){prefillCode=h.toUpperCase();activate('R');return}
+  let m='A';try{m=localStorage.getItem('hrit-active')==='R'?'R':'A'}catch(e){}
+  activate(m);
+})();
 setInterval(()=>{
   const now=Date.now(),dt=now-lastTick;lastTick=now;
   if(S.phase!=='test'||document.hidden)return;
@@ -201,9 +294,38 @@ function render(){
   if(S.phase==='test')return renderTest();
   return renderResults();
 }
+function tabs(){
+  return `<div class="tabs" role="tablist"><button role="tab" aria-selected="${MODE==='A'}" class="tab ${MODE==='A'?'on':''}" data-mode="A">Form A</button><button role="tab" aria-selected="${MODE==='R'}" class="tab ${MODE==='R'?'on':''}" data-mode="R">Random form</button></div>`;
+}
+function bindTabs(){app.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(b.dataset.mode!==MODE){activate(b.dataset.mode);render();window.scrollTo(0,0)}})}
+function renderCoverR(){
+  app.innerHTML=`${tabs()}<div class="pad stack" style="gap:22px">
+   <div class="formhead"><div class="stack" style="gap:8px"><span class="label">Fluid reasoning battery · Random form</span><h1>Rematch<span class="cursor"></span></h1></div>
+   <span class="label mono" style="text-align:right">Ceiling<br><b style="font-size:22px;color:var(--ink)">IQ ${RCEIL}</b></span></div>
+   <div class="facts"><div><span class="label">Items</span><b>28</b></div><div><span class="label">Time limit</span><b>45:00</b></div><div><span class="label">Score range</span><b>40–${RCEIL}</b></div></div>
+   <p>Every random form is built fresh when you press Begin: 16 matrix puzzles and 12 number series, from very easy to extreme. Nobody has seen these exact puzzles before, including whoever wrote the generator, so it’s a fair way to compare scores.</p>
+   <table class="subtests"><tr><th>Section</th><th>What it measures</th><th style="text-align:right">Items</th></tr>
+    <tr><td>Matrix Reasoning</td><td>Two puzzles at each of 8 levels, from one changing feature up to five rules at once</td><td class="n">16</td></tr>
+    <tr><td>Number Series</td><td>One sequence from each of 12 rule families, easiest to hardest</td><td class="n">12</td></tr></table>
+   <div class="stack" style="gap:8px"><label class="label" for="code">Form code (optional)</label>
+    <p style="font-size:15px;color:var(--muted)">Leave blank for a brand-new set. To take the same set as a friend, enter the code from their score report.</p>
+    <div class="free"><input id="code" maxlength="7" autocomplete="off" spellcheck="false" placeholder="e.g. 1A2B3C" value="${esc(prefillCode)}" style="text-transform:uppercase"></div>
+    <p id="codeerr" class="label" style="color:var(--bad)" hidden>That code isn’t valid. Codes are 3 to 7 letters and numbers.</p></div>
+   <p class="notice">Item difficulties for random puzzles are set by how many rules each one combines, so scores are estimates. Your Form A result is kept separately.</p>
+   <div class="row"><button class="btn" id="go">Begin random form</button><span class="label">The clock starts when you press Begin</span></div>
+  </div>`;
+  bindTabs();
+  document.getElementById('go').onclick=()=>{
+    const v=document.getElementById('code').value.trim();
+    let seed;
+    if(v){seed=/^[A-Za-z0-9]{3,7}$/.test(v)?seedOf(v):null;if(!seed){document.getElementById('codeerr').hidden=false;return}}
+    else seed=1+Math.floor(Math.random()*(2**31-2));
+    S={phase:'test',idx:0,answers:{},elapsed:0,seed};buildRandom(seed);prefillCode='';save();render();window.scrollTo(0,0)};
+}
 function renderCover(){
+  if(MODE==='R')return renderCoverR();
   const counts=SECS.map((_,k)=>ITEMS.filter(i=>i.sec===k).length);
-  app.innerHTML=`<div class="pad stack" style="gap:22px">
+  app.innerHTML=`${tabs()}<div class="pad stack" style="gap:22px">
    <div class="formhead"><div class="stack" style="gap:8px"><span class="label">Fluid reasoning battery · Form A</span><h1>High Range<br>IQ Test<span class="cursor"></span></h1></div>
    <span class="label mono" style="text-align:right">Ceiling<br><b style="font-size:22px;color:var(--ink)">IQ 209</b></span></div>
    <div class="facts"><div><span class="label">Items</span><b>${ITEMS.length}</b></div><div><span class="label">Time limit</span><b>70:00</b></div><div><span class="label">Score range</span><b>40–209</b></div></div>
@@ -218,6 +340,7 @@ function renderCover(){
    <p class="notice">Scores are estimated from each item’s difficulty using item response theory. This test has not been normed on a population sample, so treat the result as a well-built estimate. Only a clinician-given test such as the WAIS-5 or Stanford-Binet 5 produces an official score.</p>
    <div class="row"><button class="btn" id="go">Begin test</button><span class="label">The clock starts when you press Begin</span></div>
   </div>`;
+  bindTabs();
   document.getElementById('go').onclick=()=>{S={phase:'test',idx:0,answers:{},elapsed:0};save();render()};
 }
 function renderTest(){
@@ -241,7 +364,7 @@ function renderTest(){
     body=`<p class="prompt">${esc(it.q)}</p><div class="txtopts">${it.o.map((o,i)=>`<button class="opt txtopt ${cur===i?'sel':''}" data-pick="${i}" aria-pressed="${cur===i}"><span class="dot">${'ABCDE'[i]}</span><span>${esc(o)}</span></button>`).join('')}</div>`;
   }
   const last=S.idx===ITEMS.length-1;
-  app.innerHTML=`<div class="bar"><div class="bar-in"><span class="label">Form A · ${answered}/${ITEMS.length} answered</span><span class="clock" id="clock">${fmt(LIMIT-S.elapsed)}</span></div><div class="bubbles">${bubbles}</div></div>
+  app.innerHTML=`<div class="bar"><div class="bar-in"><span class="label">${formName()} · ${answered}/${ITEMS.length} answered</span><span class="clock" id="clock">${fmt(LIMIT-S.elapsed)}</span></div><div class="bubbles">${bubbles}</div></div>
   <div class="pad stack" style="gap:20px">
    <div class="itemhead"><span class="label">${SECS[it.sec]} · ${pos} of ${inSec.length}</span><span class="qnum">Item ${n} / ${ITEMS.length}</span></div>
    ${body}
@@ -292,17 +415,26 @@ function renderResults(){
     const q=it.kind==='mx'?'Matrix':it.kind==='ns'?esc(it.seq)+', ?':esc(it.q);
     return `<div class="rv"><span class="m ${ok?'ok':'no'}">${String(i+1).padStart(2,'0')} ${ok?'✓':'✗'}</span><div class="stack" style="gap:3px"><span>${q}</span>
       <span>Your answer: <b>${esc(yours)}</b>${ok?'':` · Correct: <b>${esc(right)}</b>`}</span><span class="ex">${esc(it.ex)}</span></div></div>`}).join('');
-  app.innerHTML=`<div class="pad stack" style="gap:24px">
-   <div class="formhead"><div class="stack" style="gap:8px"><span class="label">Score report · Form A</span><h2>High Range IQ Test</h2></div><span class="label mono">${total}/${ITEMS.length} correct</span></div>
+  const site=location.origin+location.pathname;
+  const shareUrl=MODE==='R'?site+'#'+codeOf(S.seed):site;
+  const shareText=MODE==='R'
+    ?`I scored ${R.iq} on the High Range IQ Test (random form ${codeOf(S.seed)}, ${total}/${ITEMS.length} correct). Same puzzles, your turn:`
+    :`I scored ${R.iq} on the High Range IQ Test (${total}/${ITEMS.length} correct). Can you beat it?`;
+  const xHref='https://x.com/intent/tweet?text='+encodeURIComponent(shareText)+'&url='+encodeURIComponent(shareUrl);
+  app.innerHTML=`${tabs()}<div class="pad stack" style="gap:24px">
+   <div class="formhead"><div class="stack" style="gap:8px"><span class="label">Score report · ${esc(formName())}</span><h2>High Range IQ Test</h2></div><span class="label mono">${total}/${ITEMS.length} correct</span></div>
    <div class="score"><div class="big mono">${R.iq}</div>
     <div class="stack" style="gap:6px"><span class="label">Estimated full-scale IQ</span><p style="font-size:20px;font-family:var(--f-display);font-weight:600">${band(R.iq)}</p>
     <p class="mono" style="font-size:14.5px">95% range ${lo}–${hi} · percentile ${pctTxt}${R.iq>=115?` · about 1 in ${Math.round(rarer).toLocaleString()}`:''}</p></div></div>
    ${curveSVG(R.iq)}
+   <div class="row"><a class="btn xbtn" href="${xHref}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M18.9 1.2h3.7l-8 9.2 9.4 12.4h-7.4l-5.8-7.6-6.6 7.6H.5l8.6-9.8L.1 1.2h7.6l5.2 6.9 6-6.9Zm-1.3 19.4h2L6.5 3.3H4.3l13.3 17.3Z"/></svg>Post on X</a>
+    ${MODE==='R'?`<span class="label">Form code <b class="mono" style="color:var(--accent);font-size:15px">${codeOf(S.seed)}</b> · a friend can enter it to take the same puzzles</span>`:''}</div>
    <table class="tbl"><tr><th>Section</th><th style="text-align:right">Correct</th></tr>${rows}</table>
    <p class="notice">Estimate based on item difficulty (mean 100, SD 15), not on a norming sample. Scores from free online tests run several points higher than proctored ones. Retaking the same form inflates the score because you’ve seen the answers.</p>
    ${confirmReset?`<div class="confirm stack" style="gap:10px"><p><b>Erase this result and start over?</b></p><div class="row"><button class="btn" id="rsy">Erase and restart</button><button class="btn ghost" id="rsn">Cancel</button></div></div>`:`<div class="row"><button class="btn ghost" id="reset">Start over</button></div>`}
    <div class="stack" style="gap:6px"><span class="label">Answer review</span><div class="review">${review}</div></div>
   </div>`;
+  bindTabs();
   const r=document.getElementById('reset');if(r)r.onclick=()=>{confirmReset=true;render()};
   const ry=document.getElementById('rsy');if(ry){ry.onclick=()=>{confirmReset=false;S={phase:'cover',idx:0,answers:{},elapsed:0};save();render()};document.getElementById('rsn').onclick=()=>{confirmReset=false;render()}}
 }

@@ -132,3 +132,9 @@ body::before{background:#000}
 .cursor{display:inline-block;width:.45em;height:.7em;background:var(--accent);vertical-align:0;margin-left:4px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.cursor{animation:none}}
+.tabs{display:flex;border-bottom:1px solid var(--rule)}
+.tab{flex:1;font:inherit;font-family:var(--f-body);letter-spacing:.12em;text-transform:uppercase;font-size:13px;padding:12px 10px;background:transparent;color:var(--muted);border:0;border-bottom:2px solid transparent;cursor:pointer}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);text-shadow:var(--glow)}
+.tab:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.xbtn{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
+.free input#code{font-size:18px;width:min(100%,200px)}
